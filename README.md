@@ -9,7 +9,7 @@ A real-time heart rate monitoring application that uses a webcam and machine lea
 
 Open `index.html` in a modern browser (Chrome, Firefox, or Edge). Camera access will be requested when starting.
 
-Or try it live without downloading: [https://chris-dev.at/projects/pulse-monitor/](https://chris-dev.at/projects/pulse-monitor/)
+Or try it live without downloading: [Click Here](https://chris-dev-at.github.io/CameraPulsMonitor/)
 
 Click "Start Monitoring" and wait approximately 10 seconds for the app to collect enough data. Around 250 frames (~8 seconds at 30fps) are needed before a BPM can be calculated.
 
