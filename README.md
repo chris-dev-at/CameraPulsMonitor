@@ -2,7 +2,8 @@
 
 A real-time heart rate monitoring application that uses a webcam and machine learning to measure pulse from facial blood flow. No sensors or wearables needed - just a camera and a face.
 
-
+<img width="1007" height="897" alt="image" src="https://github.com/user-attachments/assets/89a49c45-7f0b-48a8-81f2-52fe72e2dc88" />
+<em>Guy in the photo: Andrew Horvitz (https://www.youtube.com/watch?v=aF4LG75-dZ8)</em>
 
 ## Running the Project
 
