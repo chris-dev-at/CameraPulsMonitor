@@ -39,6 +39,7 @@ const fftCtx = fftCanvas.getContext('2d');
 const enhancedCtx = enhancedCanvas.getContext('2d');
 const enhanceBtn = document.getElementById('enhanceBtn');
 const meshBtn = document.getElementById('meshBtn');
+const flashBtn = document.getElementById('flashBtn');
 
 const bpmValueEl = document.getElementById('bpmValue');
 const statusBadgeEl = document.getElementById('statusBadge');
@@ -74,6 +75,26 @@ function toggleTheme() {
 }
 
 themeBtn.addEventListener('click', toggleTheme);
+
+const infoBtn = document.getElementById('infoBtn');
+const infoModal = document.getElementById('infoModal');
+const closeInfoBtn = document.getElementById('closeInfoBtn');
+
+if (infoBtn && infoModal) {
+    infoBtn.addEventListener('click', () => {
+        infoModal.classList.remove('hidden');
+    });
+    
+    closeInfoBtn.addEventListener('click', () => {
+        infoModal.classList.add('hidden');
+    });
+    
+    infoModal.addEventListener('click', (e) => {
+        if (e.target === infoModal) {
+            infoModal.classList.add('hidden');
+        }
+    });
+}
 
 function getGraphColors() {
     const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
@@ -655,17 +676,18 @@ function updateUI(faceFound = true) {
         bpmValueEl.textContent = '--';
         
         if (measureMode === 'finger') {
-            if (!checkFingerCovered()) {
-                const brightness = getFingerBrightness();
-                if (brightness < 100) {
-                    statusTextEl.textContent = 'More brightness needed';
-                } else if (brightness > 200) {
-                    statusTextEl.textContent = 'Less brightness needed';
-                } else {
-                    statusTextEl.textContent = 'Place finger on camera';
-                }
-            } else {
+            const brightness = getFingerBrightness();
+            const fingerSignal = getFingerSignalValue();
+            const fingerCovered = checkFingerCovered();
+            
+            if (fingerCovered && brightness >= 20 && brightness <= 250) {
                 statusTextEl.textContent = 'Collecting data...';
+            } else if (brightness < 20) {
+                statusTextEl.textContent = 'More brightness needed';
+            } else if (brightness > 250) {
+                statusTextEl.textContent = 'Less brightness needed';
+            } else {
+                statusTextEl.textContent = 'Place finger on camera';
             }
         } else {
             statusTextEl.textContent = 'No face detected';
@@ -756,8 +778,10 @@ async function onResults(results) {
     let faceFound = false;
     
     if (measureMode === 'finger') {
-        const fingerVal = getFingerSignal();
-        if (fingerVal > 0) {
+        const brightness = getFingerBrightness();
+        const fingerVal = getFingerSignalValue();
+        
+        if (fingerVal > 10 && brightness >= 20 && brightness <= 250) {
             dataBuffer.push(fingerVal);
             times.push(performance.now() / 1000);
             
@@ -770,7 +794,7 @@ async function onResults(results) {
                 calculateBPM();
             }
         }
-        faceFound = dataBuffer.length > 0;
+        faceFound = dataBuffer.length > 0 && fingerVal > 10 && brightness >= 20 && brightness <= 250;
     } else if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         faceFound = true;
         const landmarks = results.multiFaceLandmarks[0];
@@ -798,40 +822,7 @@ async function onResults(results) {
     updateUI(faceFound);
 }
 
-function getFingerSignal() {
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = 100;
-    tempCanvas.height = 100;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    tempCtx.drawImage(videoElement, 0, 0, 100, 100);
-    const frameData = tempCtx.getImageData(0, 0, 100, 100).data;
-    
-    let avgRed = 0;
-    let avgGreen = 0;
-    let avgBlue = 0;
-    let count = 0;
-    
-    for (let i = 0; i < frameData.length; i += 4) {
-        avgRed += frameData[i];
-        avgGreen += frameData[i + 1];
-        avgBlue += frameData[i + 2];
-        count++;
-    }
-    
-    avgRed /= count;
-    avgGreen /= count;
-    avgBlue /= count;
-    
-    const brightness = (avgRed + avgGreen + avgBlue) / 3;
-    const redness = avgRed - (avgGreen + avgBlue) / 2;
-    
-    if (brightness < 150 && redness > 10) {
-        return redness;
-    }
-    
-    return 0;
-}
+
 
 function checkFingerCovered() {
     const tempCanvas = document.createElement('canvas');
@@ -858,10 +849,24 @@ function checkFingerCovered() {
     avgGreen /= count;
     avgBlue /= count;
     
+    let variance = 0;
+    for (let i = 0; i < frameData.length; i += 4) {
+        const r = frameData[i];
+        const g = frameData[i + 1];
+        const b = frameData[i + 2];
+        const diff = Math.abs(r - avgRed) + Math.abs(g - avgGreen) + Math.abs(b - avgBlue);
+        variance += diff * diff;
+    }
+    variance /= count;
+    
     const brightness = (avgRed + avgGreen + avgBlue) / 3;
     const redness = avgRed - (avgGreen + avgBlue) / 2;
     
-    return brightness < 150 && redness > 10;
+    const isUniform = variance < 2000;
+    const isReddish = redness > 15;
+    const isDim = brightness < 30;
+    
+    return (isUniform && isReddish) || (isDim && isReddish);
 }
 
 function getFingerBrightness() {
@@ -886,6 +891,34 @@ function getFingerBrightness() {
     }
     
     return (avgRed / count + avgGreen / count + avgBlue / count) / 3;
+}
+
+function getFingerSignalValue() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 100;
+    tempCanvas.height = 100;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    tempCtx.drawImage(videoElement, 0, 0, 100, 100);
+    const frameData = tempCtx.getImageData(0, 0, 100, 100).data;
+    
+    let avgRed = 0;
+    let avgGreen = 0;
+    let avgBlue = 0;
+    let count = 0;
+    
+    for (let i = 0; i < frameData.length; i += 4) {
+        avgRed += frameData[i];
+        avgGreen += frameData[i + 1];
+        avgBlue += frameData[i + 2];
+        count++;
+    }
+    
+    avgRed /= count;
+    avgGreen /= count;
+    avgBlue /= count;
+    
+    return avgRed - (avgGreen + avgBlue) / 2;
 }
 
 async function initFaceMesh(mode = 'face') {
@@ -991,6 +1024,8 @@ startBtn.addEventListener('click', async () => {
             document.getElementById('instructionsFinger').classList.remove('hidden');
             meshBtn.classList.add('hidden');
             cameraBtn.classList.add('hidden');
+            enhanceBtn.classList.add('hidden');
+            flashBtn.classList.remove('hidden');
         } else {
             document.getElementById('instructionsFace').classList.remove('hidden');
             document.getElementById('instructionsFinger').classList.add('hidden');
@@ -1031,6 +1066,7 @@ meshBtn.addEventListener('click', () => {
 });
 
 const cameraBtn = document.getElementById('cameraBtn');
+
 cameraBtn.addEventListener('click', () => {
     showCamera = !showCamera;
     cameraBtn.classList.toggle('active', showCamera);
@@ -1059,4 +1095,26 @@ bufferBtn.addEventListener('click', () => {
     statusTextEl.style.color = 'var(--text-dark)';
     bufferDurationEl.textContent = Math.round(bufferSize / 30) + 's';
     updateUI(true);
+});
+
+let flashOn = false;
+let videoTrack = null;
+
+flashBtn.addEventListener('click', async () => {
+    if (!videoElement.srcObject) return;
+    
+    if (!videoTrack) {
+        videoTrack = videoElement.srcObject.getVideoTracks()[0];
+    }
+    
+    if (videoTrack) {
+        const capabilities = videoTrack.getCapabilities();
+        if (capabilities.torch) {
+            flashOn = !flashOn;
+            await videoTrack.applyConstraints({
+                advanced: [{ torch: flashOn }]
+            });
+            flashBtn.classList.toggle('active', flashOn);
+        }
+    }
 });

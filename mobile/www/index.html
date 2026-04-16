@@ -11,6 +11,22 @@
 </head>
 <body>
     <div class="container">
+        <div class="info-link">
+            <button id="infoBtn" class="info-btn" title="How it works">
+                <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="#000000" version="1.1" id="Capa_1" width="800px" height="800px" viewBox="0 0 490.318 490.318" xml:space="preserve">
+                    <g>
+                        <g>
+                            <g>
+                                <path d="M245.148,0C109.967,0,0.009,109.98,0.009,245.162c0,135.182,109.958,245.156,245.139,245.156     c135.186,0,245.162-109.978,245.162-245.156C490.31,109.98,380.333,0,245.148,0z M245.148,438.415     c-106.555,0-193.234-86.698-193.234-193.253c0-106.555,86.68-193.258,193.234-193.258c106.559,0,193.258,86.703,193.258,193.258     C438.406,351.717,351.706,438.415,245.148,438.415z"/>
+                                <path d="M270.036,221.352h-49.771c-8.351,0-15.131,6.78-15.131,15.118v147.566c0,8.352,6.78,15.119,15.131,15.119h49.771     c8.351,0,15.131-6.77,15.131-15.119V236.471C285.167,228.133,278.387,221.352,270.036,221.352z"/>
+                                <path d="M245.148,91.168c-24.48,0-44.336,19.855-44.336,44.336c0,24.484,19.855,44.34,44.336,44.34     c24.485,0,44.342-19.855,44.342-44.34C289.489,111.023,269.634,91.168,245.148,91.168z"/>
+                            </g>
+                        </g>
+                    </g>
+                </svg>
+            </button>
+        </div>
+        
         <div class="theme-toggle">
             <button id="themeBtn" class="theme-btn-single" title="Toggle theme">
                 <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -82,6 +98,11 @@
                                     <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
                                 </svg>
                             </button>
+                            <button id="flashBtn" class="video-btn hidden" title="Toggle flash">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -143,6 +164,26 @@
             <button id="stopBtn" class="stop-btn hidden">
                 <span>Stop Monitoring</span>
             </button>
+        </div>
+    </div>
+    
+    <div id="infoModal" class="modal hidden">
+        <div class="modal-content">
+            <button class="modal-close" id="closeInfoBtn">&times;</button>
+            <h2>How It Works</h2>
+            <p>This app measures heart rate using your camera by detecting color changes in your skin.</p>
+            
+            <h3>Face Mode</h3>
+            <p>Uses AI face detection to find your face, then measures color changes. Works well only with perfect lighting and stable position. <strong>Just for fun - not reliable.</strong></p>
+            
+            <h3>Finger Mode</h3>
+            <p>Place your finger over the camera. Uses motion amplification to detect pulses through your skin. <strong>Accurate and reliable</strong> with good lighting.</p>
+            
+            <h3>Technical Details</h3>
+            <p>Both methods use motion amplification and photoplethysmography (PPG) - the same tech as medical pulse oximeters. Blood absorbs green light, so heartbeats cause tiny color changes we detect and amplify.</p>
+            
+            <h3>Accuracy</h3>
+            <p><strong>Not a medical device.</strong> Use a medical pulse oximeter for accurate readings.</p>
         </div>
     </div>
 
