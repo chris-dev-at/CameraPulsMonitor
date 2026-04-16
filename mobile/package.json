@@ -1,0 +1,19 @@
+{
+  "name": "pulse-monitor-mobile",
+  "version": "1.0.0",
+  "description": "Pulse Monitor Mobile App",
+  "main": "index.html",
+  "scripts": {
+    "cap:sync": "npx cap sync android",
+    "assets": "npx @capacitor/assets generate",
+    "build:android": "docker build -t pulse-monitor-build . && docker run --rm -v $(pwd)/output:/output pulse-monitor-build sh -c 'cp android/app/build/outputs/apk/debug/*.apk /output/'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/assets": "^2.0.1"
+  }
+}

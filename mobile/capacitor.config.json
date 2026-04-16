@@ -1,0 +1,8 @@
+{
+  "appId": "com.pulsemonitor.app",
+  "appName": "Pulse Monitor",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

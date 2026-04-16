@@ -1,0 +1,18 @@
+# Build outputs
+**/build/
+**/output/
+*.apk
+
+# Gradle
+**/.gradle/
+
+# Idea
+**/.idea/
+*.iml
+
+# Node
+**/node_modules/
+
+# System
+.DS_Store
+Thumbs.db

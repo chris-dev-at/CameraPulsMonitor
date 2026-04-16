@@ -1,0 +1,9 @@
+services:
+  build-apk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pulse-monitor-build:latest
+    volumes:
+      - ./output:/output
+    container_name: pulse-monitor-build
