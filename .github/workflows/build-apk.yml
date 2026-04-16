@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -43,3 +46,21 @@ jobs:
           name: PulseMonitor.apk
           path: mobile/PulseMonitor.apk
           retention-days: 30
+
+  release:
+    needs: build-apk
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: PulseMonitor.apk
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PulseMonitor.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
