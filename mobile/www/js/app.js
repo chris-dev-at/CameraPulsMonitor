@@ -667,9 +667,14 @@ function updateUI(faceFound = true) {
     
     if (hasEnoughData) {
         bpmValueEl.textContent = Math.round(bpm);
-        
-        const isAligned = faceAlignment >= 0.6;
-        const isCloseEnough = faceSize >= FACE_SIZE_MIN;
+    } else {
+        bpmValueEl.textContent = '--';
+    }
+    
+    const isAligned = faceAlignment >= 0.6;
+    const isCloseEnough = faceSize >= FACE_SIZE_MIN;
+    
+    if (hasEnoughData) {
         
         if (isConfident && !isInWarningPeriod && isAligned) {
             statusTextEl.textContent = 'Measuring...';
@@ -695,8 +700,6 @@ function updateUI(faceFound = true) {
         
         qualityValueEl.textContent = Math.round(confidence) + '%';
     } else {
-        bpmValueEl.textContent = '--';
-        
         if (!isCloseEnough) {
             statusTextEl.textContent = 'Move closer to camera';
             statusBadgeEl.className = 'status-badge warning';
