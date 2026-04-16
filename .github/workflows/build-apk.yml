@@ -20,25 +20,26 @@ jobs:
           cp css/icon.svg mobile/css/
           cp js/app.js mobile/js/
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Build APK
-        uses: docker/build-push-action@v5
-        with:
-          context: ./mobile
-          load: true
-          tags: pulse-monitor-build:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      
-      - name: Run container to build APK
+      - name: Build Docker image
         run: |
-          docker run --rm -v ${{ github.workspace }}/mobile/output:/output pulse-monitor-build:latest
+          docker build -t pulse-monitor-build mobile
+      
+      - name: Run container
+        run: |
+          docker create --name get-apk pulse-monitor-build
+      
+      - name: Copy APK out
+        run: |
+          docker cp get-apk:/output/. mobile/output/
+          docker rm get-apk
+      
+      - name: Rename APK
+        run: |
+          cp mobile/output/app-debug.apk mobile/PulseMonitor.apk
       
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: PulseMonitor.apk
-          path: mobile/output/*.apk
+          path: mobile/PulseMonitor.apk
           retention-days: 30

@@ -7,20 +7,22 @@ copy /Y css\style.css mobile\css\style.css
 copy /Y css\icon.svg mobile\css\icon.svg
 copy /Y js\app.js mobile\js\app.js
 
-cd mobile
+echo Building Docker image...
+docker build -t pulse-monitor-build mobile
 
-echo Building APK with Docker...
-docker-compose build
+echo Running container...
+docker create --name get-apk2 pulse-monitor-build
 
-echo Running build container...
-docker-compose up --build
+echo Copying APK out...
+docker cp get-apk2:/output/. mobile/output/
+docker rm get-apk2
 
-cd ..
+copy /Y mobile\output\app-debug.apk mobile\PulseMonitor.apk
 
-if exist "mobile\output\*.apk" (
+if exist "mobile\PulseMonitor.apk" (
     echo.
     echo APK built successfully!
-    echo Location: mobile\output\
+    echo Location: mobile\PulseMonitor.apk
 ) else (
     echo.
     echo Error: APK not found
