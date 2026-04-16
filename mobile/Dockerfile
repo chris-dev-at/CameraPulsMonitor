@@ -53,6 +53,6 @@ COPY android ./android
 RUN npm install @capacitor/cli @capacitor/core && \
     npx cap sync android
 
-RUN cd android && ./gradlew assembleDebug --no-daemon -q
+RUN cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon -q
 
 RUN mkdir -p /output && cp android/app/build/outputs/apk/debug/*.apk /output/
