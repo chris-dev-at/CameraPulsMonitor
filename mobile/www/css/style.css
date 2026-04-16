@@ -226,6 +226,16 @@ body {
     color: var(--text-muted);
 }
 
+.info-text {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 15px;
+    max-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .measure-option input:checked + .measure-card {
     border-color: var(--primary-red);
     background: var(--bg-card-hover);
