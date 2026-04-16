@@ -3,6 +3,7 @@ let bufferSize = 150;
 const MAX_HISTORY = 10;
 const BUFFER_SIZES = [90, 150, 240, 360];
 const WARNING_MIN_DURATION = 500;
+const FACE_SIZE_MIN = 0.15;
 
 let faceMesh;
 let camera;
@@ -19,6 +20,7 @@ let peakFreq = 0;
 let signalSNR = 0;
 let confidence = 0;
 let faceAlignment = 1;
+let faceSize = 0;
 let showEnhancement = false;
 let showMesh = true;
 let showCamera = true;
@@ -306,6 +308,18 @@ function calculateFaceAlignment(landmarks) {
     
     const alignment = Math.max(0, 1 - (yaw * 1.5 + pitch * 0.5 + roll * 0.3));
     return Math.min(1, Math.max(0, alignment));
+}
+
+function calculateFaceSize(landmarks) {
+    const chin = landmarks[152];
+    const forehead = landmarks[10];
+    const leftEar = landmarks[234];
+    const rightEar = landmarks[454];
+    
+    const faceHeight = Math.abs(chin.y - forehead.y);
+    const faceWidth = Math.abs(rightEar.x - leftEar.x);
+    
+    return (faceHeight + faceWidth) / 2;
 }
 
 function drawOverlay(landmarks) {
@@ -655,6 +669,7 @@ function updateUI(faceFound = true) {
         bpmValueEl.textContent = Math.round(bpm);
         
         const isAligned = faceAlignment >= 0.6;
+        const isCloseEnough = faceSize >= FACE_SIZE_MIN;
         
         if (isConfident && !isInWarningPeriod && isAligned) {
             statusTextEl.textContent = 'Measuring...';
@@ -666,7 +681,9 @@ function updateUI(faceFound = true) {
             if (!isConfident && warningStartTime === 0) {
                 warningStartTime = now;
             }
-            if (!isAligned) {
+            if (!isCloseEnough) {
+                statusTextEl.textContent = 'Move closer to camera';
+            } else if (!isAligned) {
                 statusTextEl.textContent = 'Look straight at camera';
             } else {
                 statusTextEl.textContent = 'Bad signal';
@@ -680,7 +697,12 @@ function updateUI(faceFound = true) {
     } else {
         bpmValueEl.textContent = '--';
         
-        if (faceAlignment < 0.6) {
+        if (!isCloseEnough) {
+            statusTextEl.textContent = 'Move closer to camera';
+            statusBadgeEl.className = 'status-badge warning';
+            bpmValueEl.style.color = 'var(--warning-orange)';
+            statusTextEl.style.color = 'var(--warning-orange)';
+        } else if (faceAlignment < 0.6) {
             statusTextEl.textContent = 'Look straight at camera';
             statusBadgeEl.className = 'status-badge warning';
             bpmValueEl.style.color = 'var(--warning-orange)';
@@ -719,6 +741,7 @@ async function onResults(results) {
         const landmarks = results.multiFaceLandmarks[0];
         drawOverlay(landmarks);
         faceAlignment = calculateFaceAlignment(landmarks);
+        faceSize = calculateFaceSize(landmarks);
         
         const greenVal = getROIAverage(landmarks);
         
