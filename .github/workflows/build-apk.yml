@@ -43,22 +43,3 @@ jobs:
           name: PulseMonitor.apk
           path: mobile/PulseMonitor.apk
           retention-days: 30
-
-  release:
-    needs: build-apk
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: Download APK
-        uses: actions/download-artifact@v4
-        with:
-          name: PulseMonitor.apk
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: PulseMonitor.apk
-          draft: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
