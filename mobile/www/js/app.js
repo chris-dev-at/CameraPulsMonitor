@@ -653,7 +653,16 @@ function updateUI(faceFound = true) {
     
     if (!faceFound) {
         bpmValueEl.textContent = '--';
-        statusTextEl.textContent = 'No face detected';
+        
+        if (measureMode === 'finger') {
+            if (!checkFingerCovered()) {
+                statusTextEl.textContent = 'Place finger on camera';
+            } else {
+                statusTextEl.textContent = 'Collecting data...';
+            }
+        } else {
+            statusTextEl.textContent = 'No face detected';
+        }
         bpmValueEl.style.color = 'var(--primary-red)';
         statusTextEl.style.color = 'var(--primary-red)';
         statusBadgeEl.className = 'status-badge error';
@@ -739,7 +748,23 @@ async function onResults(results) {
     
     let faceFound = false;
     
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+    if (measureMode === 'finger') {
+        const fingerVal = getFingerSignal();
+        if (fingerVal > 0) {
+            dataBuffer.push(fingerVal);
+            times.push(performance.now() / 1000);
+            
+            if (dataBuffer.length > bufferSize) {
+                dataBuffer.shift();
+                times.shift();
+            }
+            
+            if (dataBuffer.length >= bufferSize) {
+                calculateBPM();
+            }
+        }
+        faceFound = dataBuffer.length > 0;
+    } else if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         faceFound = true;
         const landmarks = results.multiFaceLandmarks[0];
         drawOverlay(landmarks);
@@ -766,7 +791,73 @@ async function onResults(results) {
     updateUI(faceFound);
 }
 
-async function initFaceMesh() {
+function getFingerSignal() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 100;
+    tempCanvas.height = 100;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    tempCtx.drawImage(videoElement, 0, 0, 100, 100);
+    const frameData = tempCtx.getImageData(0, 0, 100, 100).data;
+    
+    let avgRed = 0;
+    let avgGreen = 0;
+    let avgBlue = 0;
+    let count = 0;
+    
+    for (let i = 0; i < frameData.length; i += 4) {
+        avgRed += frameData[i];
+        avgGreen += frameData[i + 1];
+        avgBlue += frameData[i + 2];
+        count++;
+    }
+    
+    avgRed /= count;
+    avgGreen /= count;
+    avgBlue /= count;
+    
+    const brightness = (avgRed + avgGreen + avgBlue) / 3;
+    const redness = avgRed - (avgGreen + avgBlue) / 2;
+    
+    if (brightness < 80 && redness > 20) {
+        return redness;
+    }
+    
+    return 0;
+}
+
+function checkFingerCovered() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 100;
+    tempCanvas.height = 100;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    tempCtx.drawImage(videoElement, 0, 0, 100, 100);
+    const frameData = tempCtx.getImageData(0, 0, 100, 100).data;
+    
+    let avgRed = 0;
+    let avgGreen = 0;
+    let avgBlue = 0;
+    let count = 0;
+    
+    for (let i = 0; i < frameData.length; i += 4) {
+        avgRed += frameData[i];
+        avgGreen += frameData[i + 1];
+        avgBlue += frameData[i + 2];
+        count++;
+    }
+    
+    avgRed /= count;
+    avgGreen /= count;
+    avgBlue /= count;
+    
+    const brightness = (avgRed + avgGreen + avgBlue) / 3;
+    const redness = avgRed - (avgGreen + avgBlue) / 2;
+    
+    return brightness < 80 && redness > 20;
+}
+
+async function initFaceMesh(mode = 'face') {
     statusTextEl.textContent = 'Checking camera...';
     statusBadgeEl.className = 'status-badge warning';
     
@@ -775,11 +866,13 @@ async function initFaceMesh() {
             throw new Error('Camera API not supported');
         }
         
+        const facing = mode === 'finger' ? 'environment' : 'user';
+        
         const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
                 width: { ideal: 640 }, 
                 height: { ideal: 480 }, 
-                facingMode: 'user' 
+                facingMode: facing
             } 
         });
         
@@ -840,18 +933,37 @@ async function initFaceMesh() {
     }
 }
 
+const stopBtn = document.getElementById('stopBtn');
+const measureSelect = document.querySelector('.measure-select');
+
+let measureMode = 'face';
+
 startBtn.addEventListener('click', async () => {
     console.log('Start button clicked');
     startBtn.disabled = true;
     startBtn.innerHTML = '<span>Loading AI Model...</span>';
     
+    measureMode = document.querySelector('input[name="measure"]:checked').value;
+    
+    measureSelect.classList.add('hidden');
     bpmValueEl.style.color = 'var(--text-dark)';
     statusTextEl.style.color = 'var(--text-dark)';
     
     try {
-        await initFaceMesh();
+        await initFaceMesh(measureMode);
         startBtn.classList.add('hidden');
+        stopBtn.classList.remove('hidden');
         mainApp.classList.remove('hidden');
+        
+        if (measureMode === 'finger') {
+            document.getElementById('instructionsFace').classList.add('hidden');
+            document.getElementById('instructionsFinger').classList.remove('hidden');
+            meshBtn.classList.add('hidden');
+            cameraBtn.classList.add('hidden');
+        } else {
+            document.getElementById('instructionsFace').classList.remove('hidden');
+            document.getElementById('instructionsFinger').classList.add('hidden');
+        }
     } catch (err) {
         console.error('Init Error:', err);
         let errorMsg = 'Camera/AI failed to load';
@@ -865,6 +977,10 @@ startBtn.addEventListener('click', async () => {
         statusTextEl.textContent = errorMsg;
         statusBadgeEl.className = 'status-badge error';
     }
+});
+
+stopBtn.addEventListener('click', () => {
+    location.reload();
 });
 
 enhanceBtn.addEventListener('click', () => {

@@ -24,6 +24,30 @@
             <p>Real-time heart rate via camera</p>
         </div>
         
+        <div class="measure-select">
+            <label class="measure-option">
+                <input type="radio" name="measure" value="face" checked>
+                <div class="measure-card">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="8" r="5"/>
+                        <path d="M1 20c0-4 3-7 11-7s11 3 11 7"/>
+                    </svg>
+                    <span>Face</span>
+                    <small>Use camera</small>
+                </div>
+            </label>
+            <label class="measure-option">
+                <input type="radio" name="measure" value="finger">
+                <div class="measure-card">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                    </svg>
+                    <span>Finger</span>
+                    <small>Use camera</small>
+                </div>
+            </label>
+        </div>
+        
         <button id="startBtn">
             <span>Start Monitoring</span>
         </button>
@@ -94,7 +118,7 @@
             </div>
             
             <div class="row-center">
-                <div class="instructions">
+                <div class="instructions" id="instructionsFace">
                     <h3>Tips for accurate readings</h3>
                     <ul>
                         <li>Ensure good lighting on your face</li>
@@ -103,7 +127,20 @@
                         <li>Stay relaxed and breathe normally</li>
                     </ul>
                 </div>
+                <div class="instructions hidden" id="instructionsFinger">
+                    <h3>Tips for finger measurement</h3>
+                    <ul>
+                        <li>Place finger firmly over camera</li>
+                        <li>Keep finger still, don't press too hard</li>
+                        <li>Use index finger for best contact</li>
+                        <li>Hold still during measurement</li>
+                    </ul>
+                </div>
             </div>
+            
+            <button id="stopBtn" class="stop-btn hidden">
+                <span>Stop Monitoring</span>
+            </button>
         </div>
     </div>
 
