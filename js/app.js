@@ -702,9 +702,9 @@ function updateUI(faceFound = true) {
             if (!isConfident && warningStartTime === 0) {
                 warningStartTime = now;
             }
-            if (!isCloseEnough) {
+            if (!isCloseEnough && measureMode !== 'finger') {
                 statusTextEl.textContent = 'Move closer to camera';
-            } else if (!isAligned) {
+            } else if (!isAligned && measureMode !== 'finger') {
                 statusTextEl.textContent = 'Look straight at camera';
             } else {
                 statusTextEl.textContent = 'Bad signal';
@@ -716,12 +716,12 @@ function updateUI(faceFound = true) {
         
         qualityValueEl.textContent = Math.round(confidence) + '%';
     } else {
-        if (!isCloseEnough) {
+        if (!isCloseEnough && measureMode !== 'finger') {
             statusTextEl.textContent = 'Move closer to camera';
             statusBadgeEl.className = 'status-badge warning';
             bpmValueEl.style.color = 'var(--warning-orange)';
             statusTextEl.style.color = 'var(--warning-orange)';
-        } else if (faceAlignment < 0.6) {
+        } else if (faceAlignment < 0.6 && measureMode !== 'finger') {
             statusTextEl.textContent = 'Look straight at camera';
             statusBadgeEl.className = 'status-badge warning';
             bpmValueEl.style.color = 'var(--warning-orange)';
