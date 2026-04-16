@@ -819,7 +819,7 @@ function getFingerSignal() {
     const brightness = (avgRed + avgGreen + avgBlue) / 3;
     const redness = avgRed - (avgGreen + avgBlue) / 2;
     
-    if (brightness < 80 && redness > 20) {
+    if (brightness < 150 && redness > 10) {
         return redness;
     }
     
