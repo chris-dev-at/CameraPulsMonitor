@@ -656,7 +656,14 @@ function updateUI(faceFound = true) {
         
         if (measureMode === 'finger') {
             if (!checkFingerCovered()) {
-                statusTextEl.textContent = 'Place finger on camera';
+                const brightness = getFingerBrightness();
+                if (brightness < 100) {
+                    statusTextEl.textContent = 'More brightness needed';
+                } else if (brightness > 200) {
+                    statusTextEl.textContent = 'Less brightness needed';
+                } else {
+                    statusTextEl.textContent = 'Place finger on camera';
+                }
             } else {
                 statusTextEl.textContent = 'Collecting data...';
             }
@@ -854,7 +861,31 @@ function checkFingerCovered() {
     const brightness = (avgRed + avgGreen + avgBlue) / 3;
     const redness = avgRed - (avgGreen + avgBlue) / 2;
     
-    return brightness < 80 && redness > 20;
+    return brightness < 150 && redness > 10;
+}
+
+function getFingerBrightness() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 100;
+    tempCanvas.height = 100;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    tempCtx.drawImage(videoElement, 0, 0, 100, 100);
+    const frameData = tempCtx.getImageData(0, 0, 100, 100).data;
+    
+    let avgRed = 0;
+    let avgGreen = 0;
+    let avgBlue = 0;
+    let count = 0;
+    
+    for (let i = 0; i < frameData.length; i += 4) {
+        avgRed += frameData[i];
+        avgGreen += frameData[i + 1];
+        avgBlue += frameData[i + 2];
+        count++;
+    }
+    
+    return (avgRed / count + avgGreen / count + avgBlue / count) / 3;
 }
 
 async function initFaceMesh(mode = 'face') {
