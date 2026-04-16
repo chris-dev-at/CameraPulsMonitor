@@ -1,0 +1,44 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Copy web files to mobile directory
+        run: |
+          cp index.html mobile/www/
+          cp css/style.css mobile/css/
+          cp css/icon.svg mobile/css/
+          cp js/app.js mobile/js/
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build APK
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mobile
+          load: true
+          tags: pulse-monitor-build:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Run container to build APK
+        run: |
+          docker run --rm -v ${{ github.workspace }}/mobile/output:/output pulse-monitor-build:latest
+      
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PulseMonitor.apk
+          path: mobile/output/*.apk
+          retention-days: 30

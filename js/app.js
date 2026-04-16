@@ -1,6 +1,8 @@
 const ROI_LANDMARKS = [10, 67, 103, 104, 108, 151, 337, 332, 297, 338];
-const BUFFER_SIZE = 250;
-const MAX_HISTORY = 15;
+let bufferSize = 150;
+const MAX_HISTORY = 10;
+const BUFFER_SIZES = [90, 150, 240, 360];
+const WARNING_MIN_DURATION = 500;
 
 let faceMesh;
 let camera;
@@ -8,16 +10,21 @@ let dataBuffer = [];
 let times = [];
 let bpm = 0;
 let bpmHistory = [];
+let bpmStdDev = 0;
 let isProcessing = false;
 let lastFrameTime = 0;
 let fftData = [];
 let fftFreqs = [];
 let peakFreq = 0;
 let signalSNR = 0;
+let confidence = 0;
+let faceAlignment = 1;
 let showEnhancement = false;
 let showMesh = true;
+let showCamera = true;
 let enhancedImageData = null;
 let lastLandmarks = null;
+let warningStartTime = 0;
 
 const videoElement = document.getElementById('videoElement');
 const overlayCanvas = document.getElementById('overlayCanvas');
@@ -35,9 +42,48 @@ const bpmValueEl = document.getElementById('bpmValue');
 const statusBadgeEl = document.getElementById('statusBadge');
 const statusTextEl = document.getElementById('statusText');
 const bufferProgressEl = document.getElementById('bufferProgress');
+const bufferDurationEl = document.getElementById('bufferDuration');
 const qualityValueEl = document.getElementById('qualityValue');
 const startBtn = document.getElementById('startBtn');
 const mainApp = document.getElementById('mainApp');
+const bufferBtn = document.getElementById('bufferBtn');
+const themeBtn = document.getElementById('themeBtn');
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    setTheme(savedTheme);
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    
+    const themeIcon = document.getElementById('themeIcon');
+    if (theme === 'light') {
+        themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    } else {
+        themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+    }
+}
+
+function toggleTheme() {
+    const current = localStorage.getItem('theme') || 'dark';
+    setTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+themeBtn.addEventListener('click', toggleTheme);
+
+function getGraphColors() {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    return {
+        bg: isDark ? '#222222' : '#e8e8e8',
+        line: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+        text: isDark ? '#a0a0a0' : '#666666',
+        primary: '#e85a6b'
+    };
+}
+
+initTheme();
 
 function numpyDetrend(data) {
     const x = Array.from({length: data.length}, (_, i) => i);
@@ -98,7 +144,7 @@ function numpyBandpassFilter(data, fps, low = 0.75, high = 3.0) {
 }
 
 function calculateBPM() {
-    if (dataBuffer.length < BUFFER_SIZE) return;
+    if (dataBuffer.length < bufferSize) return;
     
     const data = [...dataBuffer];
     const timesArr = [...times];
@@ -159,6 +205,10 @@ function calculateBPM() {
         
         bpm = bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length;
         
+        const mean = bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length;
+        const variance = bpmHistory.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / bpmHistory.length;
+        bpmStdDev = Math.sqrt(variance);
+        
         let noiseSum = 0;
         let noiseCount = 0;
         const windowSize = 10;
@@ -172,8 +222,12 @@ function calculateBPM() {
         
         const avgNoise = noiseCount > 0 ? noiseSum / noiseCount : 1;
         signalSNR = avgNoise > 0 ? maxVal / avgNoise : 1;
-        
         signalSNR = Math.min(10, Math.max(0, signalSNR));
+        
+        const snrConf = Math.min(1, signalSNR / 2);
+        const stabilityConf = bpmStdDev < 3 ? 1 : (bpmStdDev < 8 ? 0.5 : 0);
+        const rangeConf = (bpm >= 55 && bpm <= 100) ? 1 : ((bpm >= 45 && bpm <= 170) ? 0.5 : 0);
+        confidence = (snrConf * 0.5 + stabilityConf * 0.3 + rangeConf * 0.2) * 100;
         
         fftData = [...fftVals];
         fftFreqs = [...freqs];
@@ -224,6 +278,36 @@ function getROIAverage(landmarks) {
     return count > 0 ? sumGreen / count : 0;
 }
 
+function calculateFaceAlignment(landmarks) {
+    const nose = landmarks[1];
+    const leftEye = landmarks[33];
+    const rightEye = landmarks[263];
+    const forehead = landmarks[10];
+    const chin = landmarks[152];
+    const leftEar = landmarks[234];
+    const rightEar = landmarks[454];
+    
+    const eyeCenter = {
+        x: (leftEye.x + rightEye.x) / 2,
+        y: (leftEye.y + rightEye.y) / 2
+    };
+    
+    const noseToEyeDiff = nose.x - eyeCenter.x;
+    const faceWidth = rightEar.x - leftEar.x;
+    const yaw = Math.abs(noseToEyeDiff) / (faceWidth / 2);
+    
+    const foreheadToChin = chin.y - forehead.y;
+    const noseToForehead = nose.y - forehead.y;
+    const pitch = Math.abs(noseToForehead - foreheadToChin / 2) / (foreheadToChin / 2);
+    
+    const leftEyeY = leftEye.y;
+    const rightEyeY = rightEye.y;
+    const roll = Math.abs(leftEyeY - rightEyeY) / (Math.abs(leftEye.x - rightEye.x));
+    
+    const alignment = Math.max(0, 1 - (yaw * 1.5 + pitch * 0.5 + roll * 0.3));
+    return Math.min(1, Math.max(0, alignment));
+}
+
 function drawOverlay(landmarks) {
     const w = videoElement.videoWidth;
     const h = videoElement.videoHeight;
@@ -259,7 +343,7 @@ function drawOverlay(landmarks) {
         const pt = landmarks[idx];
         overlayCtx.beginPath();
         overlayCtx.arc(pt.x * w, pt.y * h, 4, 0, 2 * Math.PI);
-        overlayCtx.fillStyle = '#ff006e';
+        overlayCtx.fillStyle = 'var(--primary-red)';
         overlayCtx.fill();
     }
     
@@ -352,12 +436,12 @@ function drawEnhancedView() {
         enhancedCtx.scale(-1, 1);
         enhancedCtx.translate(-w, 0);
         
-        enhancedCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        enhancedCtx.fillStyle = 'rgba(200, 200, 200, 0.7)';
         enhancedCtx.fillRect(w - 190, 10, 180, 50);
-        enhancedCtx.fillStyle = '#00d4ff';
+        enhancedCtx.fillStyle = 'var(--primary-red)';
         enhancedCtx.font = 'bold 14px Inter';
         enhancedCtx.fillText('Signal: ' + Math.round(normalizedSignal * 100) + '%', w - 180, 32);
-        enhancedCtx.fillStyle = '#fff';
+        enhancedCtx.fillStyle = 'var(--text-muted)';
         enhancedCtx.font = '12px Inter';
         enhancedCtx.fillText('Enhanced View', w - 180, 50);
         
@@ -374,11 +458,12 @@ function drawGraph() {
     
     const w = graphCanvas.width;
     const h = graphCanvas.height;
+    const colors = getGraphColors();
     
-    graphCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    graphCtx.fillStyle = colors.bg;
     graphCtx.fillRect(0, 0, w, h);
     
-    graphCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    graphCtx.strokeStyle = colors.line;
     graphCtx.lineWidth = 1;
     for (let y = 0; y < h; y += h / 4) {
         graphCtx.beginPath();
@@ -388,7 +473,7 @@ function drawGraph() {
     }
     
     if (dataBuffer.length < 2) {
-        graphCtx.fillStyle = '#8892b0';
+        graphCtx.fillStyle = colors.text;
         graphCtx.font = `${Math.round(w / 20)}px Inter`;
         graphCtx.textAlign = 'center';
         graphCtx.fillText('Collecting signal...', w / 2, h / 2);
@@ -401,8 +486,8 @@ function drawGraph() {
     const range = max - min || 1;
     
     const gradient = graphCtx.createLinearGradient(0, h, 0, 0);
-    gradient.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
-    gradient.addColorStop(1, 'rgba(0, 212, 255, 0.8)');
+    gradient.addColorStop(0, 'rgba(125, 211, 168, 0.3)');
+    gradient.addColorStop(1, 'rgba(125, 211, 168, 0.7)');
     
     graphCtx.fillStyle = gradient;
     graphCtx.beginPath();
@@ -418,7 +503,10 @@ function drawGraph() {
     graphCtx.closePath();
     graphCtx.fill();
     
-    graphCtx.strokeStyle = '#00d4ff';
+    const lineGradient = graphCtx.createLinearGradient(0, 0, w, 0);
+    lineGradient.addColorStop(0, '#7dd3a8');
+    lineGradient.addColorStop(1, '#5bc08a');
+    graphCtx.strokeStyle = lineGradient;
     graphCtx.lineWidth = 3;
     graphCtx.lineCap = 'round';
     graphCtx.lineJoin = 'round';
@@ -437,10 +525,10 @@ function drawGraph() {
     
     graphCtx.stroke();
     
-    graphCtx.fillStyle = '#fff';
+    graphCtx.fillStyle = colors.primary;
     graphCtx.font = `bold ${Math.round(w / 30)}px Inter`;
     graphCtx.textAlign = 'left';
-    graphCtx.fillText('RAW SIGNAL', 15, 30);
+    graphCtx.fillText('Raw Signal', 15, 30);
 }
 
 function drawFFT() {
@@ -450,11 +538,12 @@ function drawFFT() {
     
     const w = fftCanvas.width;
     const h = fftCanvas.height;
+    const colors = getGraphColors();
     
-    fftCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    fftCtx.fillStyle = colors.bg;
     fftCtx.fillRect(0, 0, w, h);
     
-    fftCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    fftCtx.strokeStyle = colors.line;
     fftCtx.lineWidth = 1;
     for (let y = 0; y < h; y += h / 4) {
         fftCtx.beginPath();
@@ -464,7 +553,7 @@ function drawFFT() {
     }
     
     if (fftData.length === 0 || fftFreqs.length === 0) {
-        fftCtx.fillStyle = '#8892b0';
+        fftCtx.fillStyle = colors.text;
         fftCtx.font = `${Math.round(w / 20)}px Inter`;
         fftCtx.textAlign = 'center';
         fftCtx.fillText('Processing FFT...', w / 2, h / 2);
@@ -480,8 +569,8 @@ function drawFFT() {
     const maxVal = Math.max(...displaySlice) || 1;
     
     const gradient = fftCtx.createLinearGradient(0, h, 0, 0);
-    gradient.addColorStop(0, 'rgba(123, 44, 191, 0.2)');
-    gradient.addColorStop(1, 'rgba(123, 44, 191, 0.8)');
+    gradient.addColorStop(0, 'rgba(184, 160, 216, 0.3)');
+    gradient.addColorStop(1, 'rgba(184, 160, 216, 0.7)');
     
     fftCtx.fillStyle = gradient;
     fftCtx.beginPath();
@@ -497,7 +586,10 @@ function drawFFT() {
     fftCtx.closePath();
     fftCtx.fill();
     
-    fftCtx.strokeStyle = '#a855f7';
+    const fftLineGradient = fftCtx.createLinearGradient(0, 0, w, 0);
+    fftLineGradient.addColorStop(0, '#b8a0d8');
+    fftLineGradient.addColorStop(1, '#9b80c4');
+    fftCtx.strokeStyle = fftLineGradient;
     fftCtx.lineWidth = 3;
     fftCtx.beginPath();
     
@@ -521,9 +613,9 @@ function drawFFT() {
                 const px = (relativeIdx / (displaySlice.length - 1)) * w;
                 const py = h - 20 - (fftData[peakIdx] / maxVal) * (h - 40);
                 
-                fftCtx.shadowColor = '#ff006e';
+                fftCtx.shadowColor = colors.primary;
                 fftCtx.shadowBlur = 15;
-                fftCtx.fillStyle = '#ff006e';
+                fftCtx.fillStyle = colors.primary;
                 fftCtx.beginPath();
                 fftCtx.arc(px, py, 8, 0, 2 * Math.PI);
                 fftCtx.fill();
@@ -532,30 +624,79 @@ function drawFFT() {
         }
     }
     
-    fftCtx.fillStyle = '#fff';
+    fftCtx.fillStyle = colors.primary;
     fftCtx.font = `bold ${Math.round(w / 30)}px Inter`;
     fftCtx.textAlign = 'left';
-    fftCtx.fillText('FFT SPECTRUM', 15, 30);
+    fftCtx.fillText('FFT Spectrum', 15, 30);
 }
 
-function updateUI() {
-    const progress = (dataBuffer.length / BUFFER_SIZE) * 100;
+function updateUI(faceFound = true) {
+    const progress = (dataBuffer.length / bufferSize) * 100;
+    const isConfident = confidence >= 50;
+    const hasEnoughData = dataBuffer.length >= bufferSize;
+    const now = Date.now();
+    const isInWarningPeriod = warningStartTime > 0 && (now - warningStartTime) < WARNING_MIN_DURATION;
     
-    if (dataBuffer.length >= BUFFER_SIZE) {
-        bpmValueEl.textContent = Math.round(bpm);
-        statusTextEl.textContent = 'Measuring...';
-        statusBadgeEl.className = 'status-badge';
+    if (!faceFound) {
+        bpmValueEl.textContent = '--';
+        statusTextEl.textContent = 'No face detected';
+        bpmValueEl.style.color = 'var(--primary-red)';
+        statusTextEl.style.color = 'var(--primary-red)';
+        statusBadgeEl.className = 'status-badge error';
+        warningStartTime = 0;
         
-        const snrPercent = Math.min(100, Math.round((signalSNR / 3) * 100));
-        qualityValueEl.textContent = snrPercent + '%';
+        qualityValueEl.textContent = '--';
+        bufferProgressEl.textContent = Math.round(progress) + '%';
+        bufferDurationEl.textContent = Math.round(bufferSize / 30) + 's';
+        return;
+    }
+    
+    if (hasEnoughData) {
+        bpmValueEl.textContent = Math.round(bpm);
+        
+        const isAligned = faceAlignment >= 0.6;
+        
+        if (isConfident && !isInWarningPeriod && isAligned) {
+            statusTextEl.textContent = 'Measuring...';
+            statusBadgeEl.className = 'status-badge';
+            bpmValueEl.style.color = 'var(--text-dark)';
+            statusTextEl.style.color = 'var(--text-dark)';
+            warningStartTime = 0;
+        } else {
+            if (!isConfident && warningStartTime === 0) {
+                warningStartTime = now;
+            }
+            if (!isAligned) {
+                statusTextEl.textContent = 'Look straight at camera';
+            } else {
+                statusTextEl.textContent = 'Bad signal';
+            }
+            statusBadgeEl.className = 'status-badge warning';
+            bpmValueEl.style.color = 'var(--warning-orange)';
+            statusTextEl.style.color = 'var(--warning-orange)';
+        }
+        
+        qualityValueEl.textContent = Math.round(confidence) + '%';
     } else {
         bpmValueEl.textContent = '--';
-        statusTextEl.textContent = `Collecting data... ${Math.round(progress)}%`;
-        statusBadgeEl.className = 'status-badge warning';
+        
+        if (faceAlignment < 0.6) {
+            statusTextEl.textContent = 'Look straight at camera';
+            statusBadgeEl.className = 'status-badge warning';
+            bpmValueEl.style.color = 'var(--warning-orange)';
+            statusTextEl.style.color = 'var(--warning-orange)';
+        } else {
+            statusTextEl.textContent = `Collecting data... ${Math.round(progress)}%`;
+            statusTextEl.style.color = 'var(--text-dark)';
+            statusBadgeEl.className = 'status-badge warning';
+            bpmValueEl.style.color = 'var(--text-muted)';
+        }
         qualityValueEl.textContent = '--';
+        warningStartTime = 0;
     }
     
     bufferProgressEl.textContent = Math.round(progress) + '%';
+    bufferDurationEl.textContent = Math.round(bufferSize / 30) + 's';
     drawGraph();
     drawFFT();
     drawEnhancedView();
@@ -571,9 +712,13 @@ async function onResults(results) {
     overlayCanvas.height = h;
     overlayCtx.clearRect(0, 0, w, h);
     
+    let faceFound = false;
+    
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        faceFound = true;
         const landmarks = results.multiFaceLandmarks[0];
         drawOverlay(landmarks);
+        faceAlignment = calculateFaceAlignment(landmarks);
         
         const greenVal = getROIAverage(landmarks);
         
@@ -581,39 +726,28 @@ async function onResults(results) {
             dataBuffer.push(greenVal);
             times.push(performance.now() / 1000);
             
-            if (dataBuffer.length > BUFFER_SIZE) {
+            if (dataBuffer.length > bufferSize) {
                 dataBuffer.shift();
                 times.shift();
             }
             
-            if (dataBuffer.length >= BUFFER_SIZE) {
+            if (dataBuffer.length >= bufferSize) {
                 calculateBPM();
             }
         }
-    } else {
-        statusTextEl.textContent = 'No face detected';
-        statusBadgeEl.className = 'status-badge error';
     }
     
-    updateUI();
+    updateUI(faceFound);
 }
 
 async function initFaceMesh() {
+    statusTextEl.textContent = 'Checking camera...';
+    statusBadgeEl.className = 'status-badge warning';
+    
     try {
-        faceMesh = new FaceMesh({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-        });
-        
-        faceMesh.setOptions({
-            maxNumFaces: 1,
-            refineLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-        
-        faceMesh.onResults(onResults);
-        
-        await faceMesh.initialize();
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Camera API not supported');
+        }
         
         const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
@@ -636,6 +770,23 @@ async function initFaceMesh() {
             };
             check();
         });
+        
+        statusTextEl.textContent = 'Loading AI model...';
+        
+        faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+        
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        faceMesh.onResults(onResults);
+        
+        await faceMesh.initialize();
         
         statusTextEl.textContent = 'Camera ready - Face the camera';
         statusBadgeEl.className = 'status-badge';
@@ -666,17 +817,26 @@ async function initFaceMesh() {
 startBtn.addEventListener('click', async () => {
     console.log('Start button clicked');
     startBtn.disabled = true;
-    startBtn.textContent = 'Loading AI Model...';
+    startBtn.innerHTML = '<span>Loading AI Model...</span>';
+    
+    bpmValueEl.style.color = 'var(--text-dark)';
+    statusTextEl.style.color = 'var(--text-dark)';
     
     try {
         await initFaceMesh();
         startBtn.classList.add('hidden');
         mainApp.classList.remove('hidden');
     } catch (err) {
-        console.error('Error:', err);
+        console.error('Init Error:', err);
+        let errorMsg = 'Camera/AI failed to load';
+        if (err.message && err.message.toLowerCase().includes('camera')) {
+            errorMsg = 'Camera access denied';
+        } else if (err.message && err.message.toLowerCase().includes('mediapipe')) {
+            errorMsg = 'AI model failed to load';
+        }
         startBtn.disabled = false;
-        startBtn.textContent = 'Error - Click to Retry';
-        statusTextEl.textContent = 'Failed to load. Check console for details.';
+        startBtn.innerHTML = '<span>TAP to Retry</span>';
+        statusTextEl.textContent = errorMsg;
         statusBadgeEl.className = 'status-badge error';
     }
 });
@@ -695,4 +855,35 @@ meshBtn.addEventListener('click', () => {
     if (!showMesh) {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     }
+});
+
+const cameraBtn = document.getElementById('cameraBtn');
+cameraBtn.addEventListener('click', () => {
+    showCamera = !showCamera;
+    cameraBtn.classList.toggle('active', showCamera);
+    videoElement.style.display = showCamera ? 'block' : 'none';
+    overlayCanvas.style.display = showCamera ? 'block' : 'none';
+    enhancedCanvas.style.display = showCamera ? 'block' : 'none';
+    if (!showCamera && !showMesh) {
+        overlayCanvas.style.display = 'none';
+    }
+    if (!showCamera && !showEnhancement) {
+        enhancedCanvas.style.display = 'none';
+    }
+});
+
+bufferBtn.addEventListener('click', () => {
+    const currentIndex = BUFFER_SIZES.indexOf(bufferSize);
+    const nextIndex = (currentIndex + 1) % BUFFER_SIZES.length;
+    bufferSize = BUFFER_SIZES[nextIndex];
+    dataBuffer = [];
+    times = [];
+    bpm = 0;
+    bpmHistory = [];
+    signalSNR = 0;
+    confidence = 0;
+    bpmValueEl.style.color = 'var(--text-dark)';
+    statusTextEl.style.color = 'var(--text-dark)';
+    bufferDurationEl.textContent = Math.round(bufferSize / 30) + 's';
+    updateUI(true);
 });
