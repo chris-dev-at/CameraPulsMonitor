@@ -62,5 +62,6 @@ jobs:
         with:
           files: PulseMonitor.apk
           generate_release_notes: true
+          tag_name: latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
