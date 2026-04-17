@@ -1036,8 +1036,8 @@ startBtn.addEventListener('click', async () => {
             mainApp.classList.remove('hidden');
             
             if (measureMode === 'finger') {
-                document.getElementById('instructionsFace').classList.add('hidden');
-                document.getElementById('instructionsFinger').classList.remove('hidden');
+                //document.getElementById('instructionsFace').classList.add('hidden');
+                //document.getElementById('instructionsFinger').classList.remove('hidden');
                 meshBtn.classList.add('hidden');
                 cameraBtn.classList.add('hidden');
                 enhanceBtn.classList.add('hidden');
