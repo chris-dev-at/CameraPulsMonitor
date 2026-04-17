@@ -185,6 +185,7 @@ body {
     display: flex;
     gap: 15px;
     justify-content: center;
+    flex-wrap: wrap;
     margin-bottom: 25px;
 }
 
@@ -295,6 +296,135 @@ body {
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+.mic-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.mic-instructions {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 20px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.mic-instructions h3 {
+    color: var(--primary-red);
+    margin-bottom: 15px;
+}
+
+.mic-instructions ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.mic-instructions li {
+    color: var(--text-muted);
+    padding: 8px 0;
+    padding-left: 20px;
+    position: relative;
+}
+
+.mic-instructions li::before {
+    content: "•";
+    color: var(--primary-red);
+    position: absolute;
+    left: 0;
+}
+
+.mic-settings {
+    width: 100%;
+    max-width: 400px;
+}
+
+.mic-settings label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-dark);
+    padding: 15px;
+    background: var(--bg-card);
+    border-radius: 12px;
+}
+
+.mic-settings select {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 2px solid var(--toggle-border);
+    background: var(--bg-card);
+    color: var(--text-dark);
+    font-size: 1rem;
+}
+
+#micStartBtn {
+    width: 100%;
+    max-width: 300px;
+    padding: 18px 32px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    background: var(--primary-red);
+    color: var(--text-light);
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 6px 20px rgba(232, 90, 107, 0.35);
+}
+
+#micStartBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(232, 90, 107, 0.45);
+}
+
+.mic-status {
+    color: var(--text-muted);
+    font-size: 1rem;
+    padding: 10px;
+}
+
+.mic-graphs {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.mic-graphs .graph-section {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 15px;
+}
+
+.mic-graphs .graph-title {
+    color: var(--text-dark);
+    font-weight: 600;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+
+.mic-graphs canvas {
+    width: 100%;
+    height: 100px;
+    border-radius: 8px;
+}
+
+.mic-result {
+    width: 100%;
+    max-width: 400px;
+}
+
+.mic-result .bpm-display {
+    background: var(--bg-card);
+    border-radius: 20px;
+    padding: 30px;
+    text-align: center;
 }
 
 .hidden {
@@ -631,12 +761,19 @@ body {
 .info-link {
     position: absolute;
     top: 20px;
-    right: 75px;
+    left: 20px;
     z-index: 100;
     display: flex;
     align-items: center;
     justify-content: center;
     height: 44px;
+}
+
+.theme-toggle {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
 }
 
 .info-btn {

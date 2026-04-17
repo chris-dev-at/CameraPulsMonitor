@@ -1014,21 +1014,38 @@ startBtn.addEventListener('click', async () => {
     statusTextEl.style.color = 'var(--text-dark)';
     
     try {
-        await initFaceMesh(measureMode);
-        startBtn.classList.add('hidden');
-        stopBtn.classList.remove('hidden');
-        mainApp.classList.remove('hidden');
-        
-        if (measureMode === 'finger') {
-            document.getElementById('instructionsFace').classList.add('hidden');
-            document.getElementById('instructionsFinger').classList.remove('hidden');
-            meshBtn.classList.add('hidden');
-            cameraBtn.classList.add('hidden');
-            enhanceBtn.classList.add('hidden');
-            flashBtn.classList.remove('hidden');
+        if (measureMode === 'mic') {
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            mainApp.classList.remove('hidden');
+            
+            const camSection = document.getElementById('cameraSection');
+            if (camSection) camSection.classList.add('hidden');
+            
+            const graphsRow = document.querySelector('.graphs-row');
+            if (graphsRow) graphsRow.classList.add('hidden');
+            
+            document.querySelectorAll('.row-center').forEach(el => el.classList.add('hidden'));
+            
+            const micViewEl = document.getElementById('micView');
+            if (micViewEl) micViewEl.classList.remove('hidden');
         } else {
-            document.getElementById('instructionsFace').classList.remove('hidden');
-            document.getElementById('instructionsFinger').classList.add('hidden');
+            await initFaceMesh(measureMode);
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            mainApp.classList.remove('hidden');
+            
+            if (measureMode === 'finger') {
+                document.getElementById('instructionsFace').classList.add('hidden');
+                document.getElementById('instructionsFinger').classList.remove('hidden');
+                meshBtn.classList.add('hidden');
+                cameraBtn.classList.add('hidden');
+                enhanceBtn.classList.add('hidden');
+                flashBtn.classList.remove('hidden');
+            } else {
+                document.getElementById('instructionsFace').classList.remove('hidden');
+                document.getElementById('instructionsFinger').classList.add('hidden');
+            }
         }
     } catch (err) {
         console.error('Init Error:', err);
@@ -1118,3 +1135,233 @@ flashBtn.addEventListener('click', async () => {
         }
     }
 });
+
+const micStartBtn = document.getElementById('micStartBtn');
+const micStatus = document.getElementById('micStatus');
+const micDurationSelect = document.getElementById('micDuration');
+const micBpmValue = document.getElementById('micBpmValue');
+const micResult = document.getElementById('micResult');
+const micGraphs = document.getElementById('micGraphs');
+const micRawCanvas = document.getElementById('micRawCanvas');
+const micFilteredCanvas = document.getElementById('micFilteredCanvas');
+const micFFTCanvas = document.getElementById('micFFTCanvas');
+const micRawCtx = micRawCanvas ? micRawCanvas.getContext('2d') : null;
+const micFilteredCtx = micFilteredCanvas ? micFilteredCanvas.getContext('2d') : null;
+const micFFTCtx = micFFTCanvas ? micFFTCanvas.getContext('2d') : null;
+
+if (micStartBtn) {
+    let mediaRecorder;
+    let audioChunks = [];
+    
+    function playBeep(frequency = 880, duration = 200) {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+        gainNode.gain.value = 0.5;
+        
+        oscillator.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration / 1000);
+        oscillator.stop(audioCtx.currentTime + duration / 1000);
+    }
+    
+    function calculateBPMFromAudio(audioBuffer) {
+        try {
+            const data = audioBuffer.getChannelData(0);
+            const sampleRate = audioBuffer.sampleRate;
+            
+            const step = Math.max(1, Math.floor(data.length / 500));
+            const samples = [];
+            for (let i = 0; i < data.length; i += step) {
+                samples.push(data[i]);
+            }
+            
+            const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+            const variance = samples.reduce((a, b) => a + (b - mean) ** 2, 0) / samples.length;
+            const threshold = mean + Math.sqrt(variance) * 1.5;
+            
+            const peaks = [];
+            for (let i = 1; i < samples.length - 1; i++) {
+                if (samples[i] > threshold && samples[i] > samples[i-1] && samples[i] > samples[i+1]) {
+                    peaks.push(i);
+                }
+            }
+            
+            if (peaks.length < 2) return 0;
+            
+            const intervals = [];
+            for (let i = 1; i < peaks.length; i++) {
+                const interval = (peaks[i] - peaks[i-1]) * step / sampleRate;
+                if (interval > 0.3 && interval < 2) {
+                    intervals.push(interval);
+                }
+            }
+            
+            if (intervals.length === 0) return 0;
+            
+            const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+            return Math.round(60 / avgInterval);
+        } catch (e) {
+            console.error('BPM calculation error:', e);
+            return 0;
+        }
+    }
+    
+function drawMicGraphs(audioBuffer, rawCtx) {
+        try {
+            const data = audioBuffer.getChannelData(0);
+            
+            const rawCanvas = rawCtx.canvas;
+            
+            rawCanvas.width = rawCanvas.offsetWidth * 2;
+            rawCanvas.height = rawCanvas.offsetHeight * 2;
+            
+            const colors = getGraphColors();
+            const step = Math.max(1, Math.floor(data.length / rawCanvas.width));
+            
+            rawCtx.fillStyle = colors.bg;
+            rawCtx.fillRect(0, 0, rawCanvas.width, rawCanvas.height);
+            
+            rawCtx.strokeStyle = colors.line;
+            rawCtx.lineWidth = 1;
+            for (let y = 0; y < rawCanvas.height; y += rawCanvas.height / 4) {
+                rawCtx.beginPath();
+                rawCtx.moveTo(0, y);
+                rawCtx.lineTo(rawCanvas.width, y);
+                rawCtx.stroke();
+            }
+            
+            rawCtx.strokeStyle = colors.primary;
+            rawCtx.lineWidth = 2;
+            rawCtx.beginPath();
+            for (let i = 0; i < rawCanvas.width; i++) {
+                const dataIdx = Math.min(Math.floor(i * step), data.length - 1);
+                const y = rawCanvas.height / 2 + data[dataIdx] * rawCanvas.height * 0.4;
+                if (i === 0) rawCtx.moveTo(i, y);
+                else rawCtx.lineTo(i, y);
+            }
+            rawCtx.stroke();
+            
+            rawCtx.fillStyle = colors.primary;
+            rawCtx.font = `${Math.round(rawCanvas.width / 30)}px Inter`;
+            rawCtx.textAlign = 'left';
+            rawCtx.fillText('Raw Audio', 15, 30);
+        } catch (e) {
+            console.error('Error drawing mic graph:', e);
+        }
+    }
+    
+    function applyBandpassFilter(data, sampleRate, lowFreq, highFreq) {
+        const filtered = new Float32Array(data.length);
+        let prev = 0;
+        let prevInput = 0;
+        
+        for (let i = 0; i < data.length; i++) {
+            filtered[i] = 0.95 * (prev + data[i] - prevInput);
+            prev = filtered[i];
+            prevInput = data[i];
+        }
+        
+        return filtered;
+    }
+    
+    function computeFFT(data, sampleRate) {
+        const n = Math.min(4096, data.length);
+        const step = Math.floor(data.length / n);
+        
+        const window = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1)));
+        }
+        
+        const magnitudes = new Float32Array(n);
+        
+        for (let k = 0; k < n; k++) {
+            let real = 0, imag = 0;
+            for (let j = 0; j < n; j++) {
+                const angle = -2 * Math.PI * k * j / n;
+                real += data[j * step] * window[j] * Math.cos(angle);
+                imag += data[j * step] * window[j] * Math.sin(angle);
+            }
+            magnitudes[k] = Math.sqrt(real * real + imag * imag);
+        }
+        
+        return magnitudes;
+    }
+    
+    micStartBtn.addEventListener('click', async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const duration = parseInt(micDurationSelect.value) * 1000;
+        
+        micStatus.textContent = 'Move phone to chest...';
+        micStartBtn.disabled = true;
+        
+        let countdown = 5;
+        const countdownInterval = setInterval(() => {
+            countdown--;
+            micStatus.textContent = `Move to chest in ${countdown}...`;
+            if (countdown <= 0) {
+                clearInterval(countdownInterval);
+            }
+        }, 1000);
+        
+        setTimeout(() => {
+            clearInterval(countdownInterval);
+            playBeep(880, 300);
+            micStatus.textContent = 'Recording... Keep quiet!';
+            
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
+            
+            mediaRecorder.onstop = async () => {
+                playBeep(440, 300);
+                micStatus.textContent = 'Processing...';
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                
+                const bpm = calculateBPMFromAudio(audioBuffer);
+                
+                micBpmValue.textContent = bpm > 0 ? bpm : '--';
+                micStatus.textContent = bpm > 0 ? 'Done!' : 'Could not detect heartbeat';
+                micResult.classList.remove('hidden');
+                
+                if (micGraphs) micGraphs.classList.remove('hidden');
+                if (micRawCtx) {
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                    drawMicGraphs(audioBuffer, micRawCtx);
+                }
+                
+                micStartBtn.disabled = false;
+                
+                stream.getTracks().forEach(track => track.stop());
+            };
+            
+            mediaRecorder.start();
+            
+            setTimeout(() => {
+                mediaRecorder.stop();
+            }, duration);
+            
+        }, 5000);
+        
+    } catch (err) {
+        micStatus.textContent = 'Microphone access denied';
+        micStartBtn.disabled = false;
+    }
+});
+}

@@ -37,7 +37,7 @@
         
         <div class="header">
             <h1>Pulse Monitor</h1>
-            <p>Real-time heart rate via camera</p>
+            <p>Real-time heart rate via camera or microphone</p>
         </div>
         
         <div class="measure-select">
@@ -49,7 +49,7 @@
                         <path d="M1 20c0-4 3-7 11-7s11 3 11 7"/>
                     </svg>
                     <span>Face</span>
-                    <small>Proof of concept</small>
+                    <small>Uses forehead</small>
                 </div>
             </label>
             <label class="measure-option">
@@ -59,19 +59,32 @@
                         <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
                     </svg>
                     <span>Finger</span>
-                    <small>More accurate</small>
+                    <small>Uses index finger</small>
+                </div>
+            </label>
+            <label class="measure-option">
+                <input type="radio" name="measure" value="mic">
+                <div class="measure-card">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                    <span>Microphone</span>
+                    <small>Uses heart sounds</small>
                 </div>
             </label>
         </div>
         
-        <p class="info-text">Note: Both methods are approximate. Finger is more accurate but not a medical device.</p>
+        <p class="info-text">Note: All methods are approximate. Finger is most accurate but not a medical device.</p>
         
         <button id="startBtn">
             <span>Start Monitoring</span>
         </button>
         
         <div id="mainApp" class="hidden main-content">
-            <div class="row">
+            <div id="cameraSection" class="row">
                 <div class="video-col">
                     <div class="video-wrapper">
                         <div class="video-container">
@@ -137,27 +150,47 @@
                 <div class="graph-section">
                     <div class="graph-title">FFT Spectrum</div>
                     <canvas id="fftCanvas"></canvas>
+</div>
                 </div>
             </div>
             
-            <div class="row-center">
-                <div class="instructions" id="instructionsFace">
-                    <h3>Tips for accurate readings</h3>
+            <div class="mic-view hidden" id="micView">
+                <div class="mic-instructions">
+                    <h3>Microphone Measurement</h3>
                     <ul>
-                        <li>Ensure good lighting on your face</li>
-                        <li>Keep your face centered in the frame</li>
-                        <li>Hold still during measurement</li>
-                        <li>Stay relaxed and breathe normally</li>
+                        <li>Hold phone to your chest</li>
+                        <li>Press start and move phone to chest within 5 seconds</li>
+                        <li>High beep = recording starts, low beep = recording ends</li>
+                        <li>Stay quiet during recording</li>
+                        <li>Recording lasts 10 seconds</li>
                     </ul>
                 </div>
-                <div class="instructions hidden" id="instructionsFinger">
-                    <h3>Tips for finger measurement</h3>
-                    <ul>
-                        <li>Place finger firmly over camera</li>
-                        <li>Keep finger still, don't press too hard</li>
-                        <li>Use index finger for best contact</li>
-                        <li>Hold still during measurement</li>
-                    </ul>
+                <div class="mic-settings">
+                    <label>
+                        Recording Duration:
+                        <select id="micDuration">
+                            <option value="5">5 seconds</option>
+                            <option value="10" selected>10 seconds</option>
+                            <option value="15">15 seconds</option>
+                            <option value="20">20 seconds</option>
+                        </select>
+                    </label>
+                </div>
+                <button id="micStartBtn">Start Recording</button>
+                <div id="micStatus" class="mic-status">Ready</div>
+                
+                <div id="micResult" class="mic-result hidden">
+                    <div class="bpm-display">
+                        <div class="bpm-value" id="micBpmValue">--</div>
+                        <div class="bpm-label">BPM</div>
+                    </div>
+                </div>
+                
+                <div class="mic-graphs hidden" id="micGraphs">
+                    <div class="graph-section">
+                        <div class="graph-title">Raw Audio</div>
+                        <canvas id="micRawCanvas"></canvas>
+                    </div>
                 </div>
             </div>
             
@@ -179,8 +212,11 @@
             <h3>Finger Mode</h3>
             <p>Place your finger over the camera. Uses motion amplification to detect pulses through your skin. <strong>Accurate and reliable</strong> with good lighting.</p>
             
+            <h3>Microphone Mode</h3>
+            <p>Place your microphone to your chest and the app will record your heart sounds. (Experimental)</p>
+            
             <h3>Technical Details</h3>
-            <p>Both methods use motion amplification and photoplethysmography (PPG) - the same tech as medical pulse oximeters. Blood absorbs green light, so heartbeats cause tiny color changes we detect and amplify.</p>
+            <p>Both face and finger methods use motion amplification and photoplethysmography (PPG) - the same tech as medical pulse oximeters. Blood absorbs green light, so heartbeats cause tiny color changes we detect and amplify. Microphone mode uses basic sound processing.</p>
             
             <h3>Accuracy</h3>
             <p><strong>Not a medical device.</strong> Use a medical pulse oximeter for accurate readings.</p>
