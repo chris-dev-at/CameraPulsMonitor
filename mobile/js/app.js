@@ -1170,47 +1170,127 @@ if (micStartBtn) {
         oscillator.stop(audioCtx.currentTime + duration / 1000);
     }
     
-    function calculateBPMFromAudio(audioBuffer) {
-        try {
-            const data = audioBuffer.getChannelData(0);
-            const sampleRate = audioBuffer.sampleRate;
-            
-            const step = Math.max(1, Math.floor(data.length / 500));
-            const samples = [];
-            for (let i = 0; i < data.length; i += step) {
-                samples.push(data[i]);
-            }
-            
-            const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
-            const variance = samples.reduce((a, b) => a + (b - mean) ** 2, 0) / samples.length;
-            const threshold = mean + Math.sqrt(variance) * 1.5;
-            
-            const peaks = [];
-            for (let i = 1; i < samples.length - 1; i++) {
-                if (samples[i] > threshold && samples[i] > samples[i-1] && samples[i] > samples[i+1]) {
-                    peaks.push(i);
-                }
-            }
-            
-            if (peaks.length < 2) return 0;
-            
-            const intervals = [];
-            for (let i = 1; i < peaks.length; i++) {
-                const interval = (peaks[i] - peaks[i-1]) * step / sampleRate;
-                if (interval > 0.3 && interval < 2) {
-                    intervals.push(interval);
-                }
-            }
-            
-            if (intervals.length === 0) return 0;
-            
-            const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-            return Math.round(60 / avgInterval);
-        } catch (e) {
-            console.error('BPM calculation error:', e);
-            return 0;
+function calculateBPMFromAudio(audioBuffer) {
+    try {
+        const data = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+
+        // --- 1. AMPLIFY ---
+        // Phone-on-chest signals are very weak; boost aggressively before anything else
+        const GAIN = 40;
+        const amplified = new Float32Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+            amplified[i] = Math.max(-1, Math.min(1, data[i] * GAIN));
         }
+
+        // --- 2. BANDPASS FILTER (20–200 Hz) ---
+        // Heartbeats live in this band; this kills rumble, breath noise, and hiss
+        function bandpass(signal, sr, lowHz, highHz) {
+            // Simple two-pass (forward + backward) single-pole IIR
+            const rc_lo = 1 / (2 * Math.PI * lowHz);
+            const rc_hi = 1 / (2 * Math.PI * highHz);
+            const dt = 1 / sr;
+
+            // High-pass (removes DC and low rumble below lowHz)
+            const alphaHP = rc_lo / (rc_lo + dt);
+            const hp = new Float32Array(signal.length);
+            let prev = signal[0];
+            hp[0] = 0;
+            for (let i = 1; i < signal.length; i++) {
+                hp[i] = alphaHP * (hp[i - 1] + signal[i] - prev);
+                prev = signal[i];
+            }
+
+            // Low-pass (removes noise above highHz)
+            const alphaLP = dt / (rc_hi + dt);
+            const lp = new Float32Array(hp.length);
+            lp[0] = hp[0];
+            for (let i = 1; i < hp.length; i++) {
+                lp[i] = lp[i - 1] + alphaLP * (hp[i] - lp[i - 1]);
+            }
+            // Reverse pass (makes it zero-phase so peaks stay in time)
+            const lp2 = new Float32Array(lp.length);
+            lp2[lp.length - 1] = lp[lp.length - 1];
+            for (let i = lp.length - 2; i >= 0; i--) {
+                lp2[i] = lp2[i + 1] + alphaLP * (lp[i] - lp2[i + 1]);
+            }
+            return lp2;
+        }
+
+        const filtered = bandpass(amplified, sampleRate, 20, 200);
+
+        // --- 3. ENVELOPE via RMS windows ---
+        // Extracts the "energy shape" of each beat; far more robust than raw samples
+        // for a phone pressed against clothing
+        const windowMs = 30;           // 30 ms window captures one beat impulse well
+        const hopMs    = 10;           // 10 ms hop (75% overlap)
+        const wLen = Math.floor(windowMs * sampleRate / 1000);
+        const hop  = Math.floor(hopMs  * sampleRate / 1000);
+        const envelope = [];
+
+        for (let i = 0; i + wLen < filtered.length; i += hop) {
+            let sum = 0;
+            for (let j = i; j < i + wLen; j++) sum += filtered[j] ** 2;
+            envelope.push(Math.sqrt(sum / wLen));
+        }
+
+        // --- 4. ADAPTIVE PEAK DETECTION ---
+        // Threshold floats at 50% of recent max so it adapts if you move the phone
+        const lookback = Math.floor(2000 / hopMs);  // ~2 s window
+        const minPeakSep = Math.floor(300  / hopMs); // 300 ms ≈ 200 BPM max
+        const peaks = [];
+
+        for (let i = 1; i < envelope.length - 1; i++) {
+            // Local adaptive threshold
+            const start = Math.max(0, i - lookback);
+            let localMax = 0;
+            for (let k = start; k <= i; k++) {
+                if (envelope[k] > localMax) localMax = envelope[k];
+            }
+            const threshold = localMax * 0.50;
+
+            const isPeak = (
+                envelope[i] > threshold &&
+                envelope[i] > envelope[i - 1] &&
+                envelope[i] > envelope[i + 1]
+            );
+
+            if (isPeak) {
+                // Enforce minimum separation (refractory period)
+                if (peaks.length === 0 || (i - peaks[peaks.length - 1]) >= minPeakSep) {
+                    peaks.push(i);
+                } else if (envelope[i] > envelope[peaks[peaks.length - 1]]) {
+                    // Replace last peak if this one is stronger and too close
+                    peaks[peaks.length - 1] = i;
+                }
+            }
+        }
+
+        if (peaks.length < 2) return 0;
+
+        // --- 5. BPM from MEDIAN interval ---
+        // Median rejects single missed/double-counted beats better than mean
+        const intervals = [];
+        for (let i = 1; i < peaks.length; i++) {
+            const sec = (peaks[i] - peaks[i - 1]) * hopMs / 1000;
+            if (sec > 0.3 && sec < 2.0) intervals.push(sec);   // 30–200 BPM range
+        }
+
+        if (intervals.length === 0) return 0;
+
+        intervals.sort((a, b) => a - b);
+        const mid = Math.floor(intervals.length / 2);
+        const medianInterval = intervals.length % 2 === 0
+            ? (intervals[mid - 1] + intervals[mid]) / 2
+            : intervals[mid];
+
+        return Math.round(60 / medianInterval);
+
+    } catch (e) {
+        console.error('BPM calculation error:', e);
+        return 0;
     }
+}
     
 function drawMicGraphs(audioBuffer, rawCtx) {
         try {
